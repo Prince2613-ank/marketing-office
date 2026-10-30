@@ -25,7 +25,7 @@ function setup(){
  gl.attachShader(program,shader(gl.FRAGMENT_SHADER,`#version 300 es
  precision highp float;in vec3 P;in vec3 N;in vec2 UV;uniform vec4 color;uniform float cutoff;uniform float alphaTest;uniform bool highlight;uniform bool textured;uniform sampler2D baseMap;uniform sampler2D shadowMap;uniform mat4 shadowMatrix;uniform vec3 emission;uniform bool emissionMapped;uniform bool interior;uniform bool night;uniform bool clearGlass;uniform bool liveTV;uniform bool fixtureLight;uniform bool displayScreen;out vec4 outColor;
  float shadowAmount(vec3 n){vec4 q=shadowMatrix*vec4(P,1.);vec3 c=q.xyz/q.w*.5+.5;if(c.x<0.||c.x>1.||c.y<0.||c.y>1.||c.z>1.)return 1.;float bias=max(.0009,.0018*(1.-dot(n,normalize(vec3(-21.,40.,25.)))));float sum=0.;for(int x=-1;x<=1;x++)for(int y=-1;y<=1;y++){float d=texture(shadowMap,c.xy+vec2(x,y)/2048.).r;sum+=c.z-bias<=d?1.:.0;}return sum/9.;}
- void main(){if(P.y>cutoff)discard;vec3 n=normalize(N);vec4 texel=textured?texture(baseMap,liveTV?vec2(UV.x,1.-UV.y):UV):vec4(1.);if(color.a*texel.a<alphaTest)discard;vec3 albedo=color.rgb*texel.rgb;if(!night&&fixtureLight)albedo=vec3(.61,.62,.61);float shadow=shadowAmount(n);float direct=max(dot(n,normalize(vec3(-21.,40.,25.))),0.);float fill=max(dot(n,normalize(vec3(1.,.55,-.3))),0.);float pool=0.;vec2 lamps[6]=vec2[6](vec2(6.4,-13.4),vec2(11.3,-13.4783),vec2(16.4,-5.9),vec2(20.1,-19.45),vec2(20.05,-26.5),vec2(21.3,-14.6));for(int i=0;i<6;i++){float d=length(P.xz-lamps[i]);pool+=1./(1.+d*d*.22);}vec3 light=night?(vec3(.24,.22,.19)+vec3(.42,.30,.17)*min(pool,1.4)+vec3(.10,.11,.13)*fill+vec3(.16,.15,.13)*direct*shadow):((interior?vec3(.52,.50,.47):vec3(.40,.41,.41))+vec3(.55,.49,.40)*direct*shadow+vec3(.12,.14,.17)*fill);if(night){float aw=exp(-pow((P.z+17.06)/.68,2.))*exp(-pow((P.y-2.1)/1.05,2.))*max(exp(-pow((P.x-3.)/1.30,2.)),max(exp(-pow((P.x-7.)/1.30,2.)),exp(-pow((P.x-11.)/1.30,2.))));float mw=exp(-dot((P-vec3(11.34,1.6,-13.4783))/vec3(1.6,1.7,1.95),(P-vec3(11.34,1.6,-13.4783))/vec3(1.6,1.7,1.95)));light+=vec3(.34,.31,.25)*aw+vec3(.29,.28,.24)*mw;}vec3 c=albedo*light+emission*(night?1.25:(displayScreen?.42:0.))*(emissionMapped?texel.rgb:vec3(1.));if(clearGlass)c=vec3(.76,.86,.87);if(highlight)c=mix(c,vec3(.3,1.,.82),.5);c=vec3(1.)-exp(-c*(night?1.5:1.38));outColor=vec4(pow(c,vec3(1./2.2)),color.a*texel.a);}`));
+ void main(){if(P.y>cutoff)discard;vec3 n=normalize(N);vec4 texel=textured?texture(baseMap,UV):vec4(1.);if(liveTV){outColor=vec4(pow(max(texel.rgb,vec3(0.)),vec3(1./2.2)),1.);return;}if(color.a*texel.a<alphaTest)discard;vec3 albedo=color.rgb*texel.rgb;if(!night&&fixtureLight)albedo=vec3(.61,.62,.61);float shadow=shadowAmount(n);float direct=max(dot(n,normalize(vec3(-21.,40.,25.))),0.);float fill=max(dot(n,normalize(vec3(1.,.55,-.3))),0.);float pool=0.;vec2 lamps[6]=vec2[6](vec2(6.4,-13.4),vec2(11.3,-13.4783),vec2(16.4,-5.9),vec2(20.1,-19.45),vec2(20.05,-26.5),vec2(21.3,-14.6));for(int i=0;i<6;i++){float d=length(P.xz-lamps[i]);pool+=1./(1.+d*d*.22);}vec3 light=night?(vec3(.24,.22,.19)+vec3(.42,.30,.17)*min(pool,1.4)+vec3(.10,.11,.13)*fill+vec3(.16,.15,.13)*direct*shadow):((interior?vec3(.52,.50,.47):vec3(.40,.41,.41))+vec3(.55,.49,.40)*direct*shadow+vec3(.12,.14,.17)*fill);if(night){float aw=exp(-pow((P.z+17.06)/.68,2.))*exp(-pow((P.y-2.1)/1.05,2.))*max(exp(-pow((P.x-3.)/1.30,2.)),max(exp(-pow((P.x-7.)/1.30,2.)),exp(-pow((P.x-11.)/1.30,2.))));float mw=exp(-dot((P-vec3(11.34,1.6,-13.4783))/vec3(1.6,1.7,1.95),(P-vec3(11.34,1.6,-13.4783))/vec3(1.6,1.7,1.95)));light+=vec3(.34,.31,.25)*aw+vec3(.29,.28,.24)*mw;}vec3 c=albedo*light+emission*(night?1.25:(displayScreen?.42:0.))*(emissionMapped?texel.rgb:vec3(1.));if(clearGlass)c=vec3(.76,.86,.87);if(highlight)c=mix(c,vec3(.3,1.,.82),.5);c=vec3(1.)-exp(-c*(night?1.5:1.38));outColor=vec4(pow(c,vec3(1./2.2)),color.a*texel.a);}`));
  gl.linkProgram(program);if(!gl.getProgramParameter(program,gl.LINK_STATUS))throw Error(gl.getProgramInfoLog(program));gl.useProgram(program);
  for(let n of ['vp','color','cutoff','alphaTest','highlight','textured','baseMap','shadowMap','shadowMatrix','emission','emissionMapped','interior','night','clearGlass','liveTV','fixtureLight','displayScreen'])U[n]=gl.getUniformLocation(program,n);
  gl.uniform1i(U.baseMap,0);gl.uniform1i(U.shadowMap,1);
@@ -42,9 +42,9 @@ async function load(){const statusEl=$('#status');
  const response=await fetch('marketing_office.glb');
  if(!response.ok)throw Error('GLB failed to load: '+response.status);
  let buf;
- const contentLength=response.headers.get('content-length');
- if(contentLength&&response.body){
-  const total=parseInt(contentLength,10);
+ const headerLen=response.headers.get('content-length');
+ const expectedTotal=headerLen?parseInt(headerLen,10):36507528;
+ if(response.body){
   let loaded=0;
   const reader=response.body.getReader();
   const chunks=[];
@@ -53,10 +53,10 @@ async function load(){const statusEl=$('#status');
    if(done)break;
    chunks.push(value);
    loaded+=value.length;
-   if(total){
-    const pct=Math.round((loaded/total)*100);
-    statusEl.textContent=`Downloading office model... ${pct}%`;
-   }
+   const pct=Math.min(99,Math.round((loaded/expectedTotal)*100));
+   const mb=(loaded/(1024*1024)).toFixed(1);
+   const totalMb=(expectedTotal/(1024*1024)).toFixed(1);
+   statusEl.textContent=`Downloading office model... ${pct}% (${mb} MB / ${totalMb} MB)`;
   }
   const all=new Uint8Array(loaded);
   let pos=0;
@@ -187,52 +187,31 @@ function updateAutomaticDoors(now,dt){
   lastShadow='';
  }
 }
-// Each TV is a live render target of the supplied model, with an offset orbit camera.
-let modelTVProgram,modelTVU={},modelTVDraws=[];
+// One decoder and one GPU texture supply synchronized video to all three TVs.
+let tvFilm,tvFilmTexture,tvFilmTime=-1,tvFilmWidth=0,tvFilmHeight=0;
+function startTVFilm(){
+ if(!tvFilm)return;const pending=tvFilm.play();if(pending)pending.catch(()=>{$('#status').textContent='Click the view to start the TV video'});
+}
+function initializeTVFilm(){
+ tvFilm=document.createElement('video');tvFilm.muted=true;tvFilm.defaultMuted=true;tvFilm.loop=true;tvFilm.playsInline=true;tvFilm.preload='auto';tvFilm.setAttribute('playsinline','');tvFilm.style.display='none';document.body.appendChild(tvFilm);
+ tvFilm.src='tv_video.mp4';
+ tvFilmTexture=gl.createTexture();gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,tvFilmTexture);gl.texImage2D(gl.TEXTURE_2D,0,gl.SRGB8_ALPHA8,1,1,0,gl.RGBA,gl.UNSIGNED_BYTE,new Uint8Array([230,230,224,255]));gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+ tvFilm.addEventListener('loadeddata',()=>{startTVFilm();invalidate()});tvFilm.addEventListener('error',()=>{$('#status').textContent='TV video could not load. Use the updated HTML or include assets/capital-crest-walkthrough.mp4.'});
+ if(tvFilm.requestVideoFrameCallback){const frame=()=>{invalidate();tvFilm.requestVideoFrameCallback(frame)};tvFilm.requestVideoFrameCallback(frame)}
+ document.addEventListener('pointerdown',startTVFilm,{once:true});document.addEventListener('keydown',startTVFilm,{once:true});
+ startTVFilm();
+}
 function createBusinessScreen(d){
- if(!modelTVProgram){
-  modelTVDraws=draws.filter(p=>p.extras.capital_crest_display);
-  modelTVProgram=gl.createProgram();
-  gl.attachShader(modelTVProgram,shader(gl.VERTEX_SHADER,`#version 300 es
-  layout(location=0) in vec3 position;layout(location=1) in vec3 normal;layout(location=2) in vec2 uv;uniform mat4 vp;out vec3 N;out vec2 UV;out float H;void main(){N=normal;UV=uv;H=position.y;gl_Position=vp*vec4(position,1.);}`));
-  gl.attachShader(modelTVProgram,shader(gl.FRAGMENT_SHADER,`#version 300 es
-  precision highp float;in vec3 N;in vec2 UV;in float H;uniform vec4 color;uniform bool textured;uniform sampler2D baseMap;uniform float alphaTest;out vec4 pixel;void main(){if(H<.887)discard;vec4 texel=textured?texture(baseMap,UV):vec4(1.);float alpha=color.a*texel.a;if(alpha<alphaTest)discard;float light=.58+.52*max(dot(normalize(N),normalize(vec3(-.6,1.,.8))),0.);pixel=vec4(color.rgb*texel.rgb*light,alpha);}`));
-  gl.linkProgram(modelTVProgram);if(!gl.getProgramParameter(modelTVProgram,gl.LINK_STATUS))throw Error(gl.getProgramInfoLog(modelTVProgram));for(const n of ['vp','color','textured','baseMap','alphaTest'])modelTVU[n]=gl.getUniformLocation(modelTVProgram,n);
- }
- const width=960,height=540,texture=gl.createTexture();gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,texture);gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA8,width,height,0,gl.RGBA,gl.UNSIGNED_BYTE,null);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR_MIPMAP_LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);for(const side of [gl.TEXTURE_WRAP_S,gl.TEXTURE_WRAP_T])gl.texParameteri(gl.TEXTURE_2D,side,gl.CLAMP_TO_EDGE);gl.generateMipmap(gl.TEXTURE_2D);
- const framebuffer=gl.createFramebuffer();gl.bindFramebuffer(gl.FRAMEBUFFER,framebuffer);gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,texture,0);const depth=gl.createRenderbuffer();gl.bindRenderbuffer(gl.RENDERBUFFER,depth);gl.renderbufferStorage(gl.RENDERBUFFER,gl.DEPTH_COMPONENT24,width,height);gl.framebufferRenderbuffer(gl.FRAMEBUFFER,gl.DEPTH_ATTACHMENT,gl.RENDERBUFFER,depth);gl.bindFramebuffer(gl.FRAMEBUFFER,null);
- const samples=Math.min(4,gl.getParameter(gl.MAX_SAMPLES)),renderFramebuffer=gl.createFramebuffer();gl.bindFramebuffer(gl.FRAMEBUFFER,renderFramebuffer);const msColor=gl.createRenderbuffer();gl.bindRenderbuffer(gl.RENDERBUFFER,msColor);gl.renderbufferStorageMultisample(gl.RENDERBUFFER,samples,gl.RGBA8,width,height);gl.framebufferRenderbuffer(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.RENDERBUFFER,msColor);const msDepth=gl.createRenderbuffer();gl.bindRenderbuffer(gl.RENDERBUFFER,msDepth);gl.renderbufferStorageMultisample(gl.RENDERBUFFER,samples,gl.DEPTH_COMPONENT24,width,height);gl.framebufferRenderbuffer(gl.FRAMEBUFFER,gl.DEPTH_ATTACHMENT,gl.RENDERBUFFER,msDepth);gl.bindFramebuffer(gl.FRAMEBUFFER,null);
- d.texture=texture;d.color=[1,1,1,1];d.emission=[.65,.65,.65];d.emissionMapped=true;businessScreens.push({d,framebuffer,renderFramebuffer,width,height,infoTexture:createTVInformation(d.extras.business_screen),index:d.extras.business_screen,last:-Infinity});
+ if(!tvFilm)initializeTVFilm();d.texture=tvFilmTexture;d.color=[1,1,1,1];d.emission=[.65,.65,.65];d.emissionMapped=true;businessScreens.push({d,index:d.extras.business_screen});
 }
-function updateBusinessScreens(now){
- if(!modelTVDraws.length)return;
- const bounds=modelTVDraws.reduce((b,d)=>[b[0].map((v,i)=>Math.min(v,d.min[i])),b[1].map((v,i)=>Math.max(v,d.max[i]))],[[Infinity,Infinity,Infinity],[-Infinity,-Infinity,-Infinity]]),focus=bounds[0].map((v,i)=>(v+bounds[1][i])/2),radius=Math.hypot(...sub(bounds[1],bounds[0]))*.5;
- for(const screen of businessScreens){if(now-screen.last<(eyeMode?32:95))continue;screen.last=now;const a=now*.00016+screen.index*Math.PI*2/3,r=radius*4,eye=[focus[0]+Math.sin(a)*r,focus[1]+r*.42,focus[2]+Math.cos(a)*r],extent=Math.max((bounds[1][1]-bounds[0][1])*.5/Math.hypot(1,.42)+Math.hypot(bounds[1][0]-bounds[0][0],bounds[1][2]-bounds[0][2])*.5*.42/Math.hypot(1,.42),Math.hypot(bounds[1][0]-bounds[0][0],bounds[1][2]-bounds[0][2])*.5/(screen.width*.64/screen.height))*1.08,aspect=screen.width*.64/screen.height,view=look(eye,focus);let near=Infinity,far=-Infinity;for(let i=0;i<8;i++){const p=[bounds[i&1][0],bounds[(i>>1)&1][1],bounds[(i>>2)&1][2]],depth=-transform(view,p)[2];near=Math.min(near,depth);far=Math.max(far,depth)}const vp=mul(ortho(-extent*aspect,extent*aspect,-extent,extent,Math.max(.05,near-.1),far+.1),view);
-  gl.bindFramebuffer(gl.FRAMEBUFFER,screen.renderFramebuffer);gl.viewport(0,0,Math.floor(screen.width*.64),screen.height);gl.depthMask(true);gl.disable(gl.POLYGON_OFFSET_FILL);gl.clearColor(.87,.865,.84,1);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);gl.useProgram(modelTVProgram);gl.uniformMatrix4fv(modelTVU.vp,false,new Float32Array(vp));gl.uniform1i(modelTVU.baseMap,0);
-  for(const transparent of [false,true]){gl.depthMask(!transparent);for(const d of modelTVDraws){if(d.glass!==transparent)continue;gl.bindVertexArray(d.vao);gl.uniform4fv(modelTVU.color,d.color);gl.uniform1f(modelTVU.alphaTest,d.alphaTest);gl.uniform1i(modelTVU.textured,!!d.texture);gl.enable(gl.POLYGON_OFFSET_FILL);gl.polygonOffset(0,-(modelTVDraws.indexOf(d)+1)*2);gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,d.texture||whiteTexture);gl.drawArrays(gl.TRIANGLES,0,d.count)}}
-  renderTVInformation(screen);gl.disable(gl.POLYGON_OFFSET_FILL);gl.bindFramebuffer(gl.READ_FRAMEBUFFER,screen.renderFramebuffer);gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER,screen.framebuffer);gl.blitFramebuffer(0,0,screen.width,screen.height,0,0,screen.width,screen.height,gl.COLOR_BUFFER_BIT,gl.NEAREST);gl.bindFramebuffer(gl.FRAMEBUFFER,null);gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,screen.d.texture);gl.generateMipmap(gl.TEXTURE_2D);
- }
- gl.depthMask(true);gl.bindFramebuffer(gl.FRAMEBUFFER,null);
+function updateBusinessScreens(){
+ if(!tvFilm||tvFilm.readyState<2||tvFilm.currentTime===tvFilmTime)return;
+ gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,tvFilmTexture);gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL,false);
+ if(tvFilmWidth!==tvFilm.videoWidth||tvFilmHeight!==tvFilm.videoHeight){gl.texImage2D(gl.TEXTURE_2D,0,gl.SRGB8_ALPHA8,gl.RGBA,gl.UNSIGNED_BYTE,tvFilm);tvFilmWidth=tvFilm.videoWidth;tvFilmHeight=tvFilm.videoHeight;}
+ else gl.texSubImage2D(gl.TEXTURE_2D,0,0,0,gl.RGBA,gl.UNSIGNED_BYTE,tvFilm);
+ tvFilmTime=tvFilm.currentTime;
 }
 
-let tvInfoProgram,tvInfoU,tvInfoVao;
-function createTVInformation(index){
- if(!tvInfoProgram){
-  tvInfoProgram=gl.createProgram();gl.attachShader(tvInfoProgram,shader(gl.VERTEX_SHADER,`#version 300 es
-  layout(location=0) in vec2 position;layout(location=1) in vec2 uv;out vec2 UV;void main(){UV=uv;gl_Position=vec4(position,0.,1.);}`));gl.attachShader(tvInfoProgram,shader(gl.FRAGMENT_SHADER,`#version 300 es
-  precision highp float;in vec2 UV;uniform sampler2D information;out vec4 pixel;void main(){pixel=texture(information,UV);}`));gl.linkProgram(tvInfoProgram);tvInfoU=gl.getUniformLocation(tvInfoProgram,'information');tvInfoVao=gl.createVertexArray();gl.bindVertexArray(tvInfoVao);const buffer=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,buffer);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,0,1,1,-1,1,1,-1,1,0,0,1,1,1,0]),gl.STATIC_DRAW);gl.enableVertexAttribArray(0);gl.vertexAttribPointer(0,2,gl.FLOAT,false,16,0);gl.enableVertexAttribArray(1);gl.vertexAttribPointer(1,2,gl.FLOAT,false,16,8);
- }
- const surface=document.createElement('canvas');surface.width=960;surface.height=540;const c=surface.getContext('2d');c.clearRect(0,0,960,540);c.fillStyle='#ebe9e2';c.fillRect(614,0,346,540);c.fillStyle='#c8c0ae';c.fillRect(614,40,2,460);
- const x=642;c.fillStyle='#7d6546';c.font='18px sans-serif';c.fillText('CAPITAL CREST',x,66);c.fillStyle='#202b31';c.font='bold 26px sans-serif';c.fillText(['ARCHITECTURE','BUILDING FORM','SITE & ARRIVAL'][index],x,115);
- const lines=[['A glazed tower facade','Curved building frontage','Architectural model'],['Tower massing & detail','Multiple viewing angles','Continuous 3D rotation'],['Site and arrival context','Building and landscape','Supplied project model']][index];
- function wrap(text,y){let line='';for(const word of text.split(' ')){const trial=line?line+' '+word:word;if(c.measureText(trial).width>280&&line){c.fillText(line,x,y);y+=28;line=word}else line=trial}if(line)c.fillText(line,x,y);return y}
- c.font='20px sans-serif';lines.forEach((line,i)=>{c.fillStyle='#a28a62';c.fillRect(x,160+i*86,34,3);c.fillStyle='#34434b';wrap(line,194+i*86)});c.fillStyle='#757e80';c.font='13px sans-serif';c.fillText('3D PROJECT PRESENTATION',x,499);
- const texture=gl.createTexture();gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,texture);gl.texImage2D(gl.TEXTURE_2D,0,gl.SRGB8_ALPHA8,gl.RGBA,gl.UNSIGNED_BYTE,surface);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);return texture;
-}
-function renderTVInformation(screen){
- gl.disable(gl.POLYGON_OFFSET_FILL);gl.disable(gl.DEPTH_TEST);gl.depthMask(false);gl.viewport(0,0,screen.width,screen.height);gl.useProgram(tvInfoProgram);gl.bindVertexArray(tvInfoVao);gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,screen.infoTexture);gl.uniform1i(tvInfoU,0);gl.drawArrays(gl.TRIANGLE_STRIP,0,4);gl.depthMask(true);gl.enable(gl.DEPTH_TEST);
-}
-
-document.addEventListener('visibilitychange',()=>{if(document.hidden)clearTimeout(dynamicTimer);else invalidate()});
+document.addEventListener('visibilitychange',()=>{if(document.hidden){clearTimeout(dynamicTimer);if(tvFilm)tvFilm.pause()}else{startTVFilm();invalidate()}});
 
 try{setup();load().catch(fail)}catch(e){fail(e)}function fail(e){$('#error').hidden=false;$('#error').textContent=e.message+' — Start the local server as described in README.txt. Open http://localhost:8000/viewer/';$('#status').textContent='Viewer could not load';console.error(e)}
