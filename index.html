@@ -1,4 +1,37 @@
-<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Capital Crest · Project Gallery</title>
-<link rel="stylesheet" href="style.css"><body><canvas id="view"></canvas><header><div class="eyebrow">CAPITAL CREST</div><h1>Project gallery</h1><p>Architecture · Materials · Experience</p><div id="status" role="status">Loading…</div></header>
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Capital Crest</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <canvas id="view"></canvas>
 
-<nav class="view-switch" aria-label="Viewing mode"><button id="day-night" aria-label="Toggle day and night" aria-pressed="false">Night</button><button id="overview" aria-pressed="true">Overview</button><button id="eye-level" aria-pressed="false">Eye level</button><select id="viewpoint" aria-label="Eye-level viewpoint" hidden><option value="0">Reception</option><option value="1">Project model</option><option value="2">Lounge</option><option value="3">Meeting</option><option value="4">Meeting doorway</option><option value="5">Workstations</option><option value="6">Storage</option></select></nav><footer>Drag to orbit · Wheel to zoom · Right-drag / Shift-drag to pan</footer><div id="error" hidden></div><script src="viewer.js"></script></body></html>
+  <header>
+    <div class="eyebrow">CAPITAL CREST</div>
+    <div id="status" role="status">Loading...</div>
+  </header>
+
+  <nav class="view-switch" aria-label="Viewing mode">
+    <button id="day-night" aria-label="Toggle day and night" aria-pressed="false">Night</button>
+    <button id="overview" aria-pressed="true">Overview</button>
+    <button id="eye-level" aria-pressed="false">Eye level</button>
+    <select id="viewpoint" aria-label="Eye-level viewpoint" hidden>
+      <option value="0">Reception</option>
+      <option value="1">Project model</option>
+      <option value="2">Lounge</option>
+      <option value="3">Meeting</option>
+      <option value="4">Meeting doorway</option>
+      <option value="5">Workstations</option>
+      <option value="6">Storage</option>
+    </select>
+  </nav>
+
+  <footer>Drag to orbit &bull; Wheel to zoom &bull; Right-drag / Shift-drag to pan</footer>
+  <div id="error" hidden></div>
+
+  <script src="viewer.js"></script>
+</body>
+</html>

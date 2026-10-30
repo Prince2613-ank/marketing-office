@@ -38,7 +38,7 @@ function setup(){
  shadowVP=mul(ortho(-27,27,-27,27,.1,110),look([-10,40,8],[11,0,-17]));gl.enable(gl.DEPTH_TEST);gl.enable(gl.BLEND);gl.depthFunc(gl.LEQUAL);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);
 }
 async function load(){const statusEl=$('#status');
- statusEl.textContent='Downloading office model…';
+ statusEl.textContent='Downloading office model...';
  const response=await fetch('marketing_office.glb');
  if(!response.ok)throw Error('GLB failed to load: '+response.status);
  let buf;
@@ -55,7 +55,7 @@ async function load(){const statusEl=$('#status');
    loaded+=value.length;
    if(total){
     const pct=Math.round((loaded/total)*100);
-    statusEl.textContent=`Downloading office model… ${pct}%`;
+    statusEl.textContent=`Downloading office model... ${pct}%`;
    }
   }
   const all=new Uint8Array(loaded);
@@ -65,7 +65,7 @@ async function load(){const statusEl=$('#status');
  }else{
   buf=await response.arrayBuffer();
  }
- statusEl.textContent='Loading scene…';
+ statusEl.textContent='Loading scene...';
  let dv=new DataView(buf);if(dv.getUint32(0,true)!==0x46546c67)throw Error('Invalid GLB');let json,bin;for(let off=12;off<buf.byteLength;){let len=dv.getUint32(off,true),type=dv.getUint32(off+4,true);if(type===0x4e4f534a)json=JSON.parse(new TextDecoder().decode(new Uint8Array(buf,off+8,len)));if(type===0x004e4942)bin=new DataView(buf,off+8,len);off+=8+len}
 const textures=[];const retainedImages=new Map();
 for(let info of json.textures||[]){let im=json.images[info.source],view=json.bufferViews[im.bufferView],bytes=new Uint8Array(binaryBuffer(bin), (view.byteOffset||0),view.byteLength);let bitmap=await createImageBitmap(new Blob([bytes],{type:im.mimeType}));let texture=gl.createTexture();gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,texture);gl.texImage2D(gl.TEXTURE_2D,0,gl.SRGB8_ALPHA8,gl.RGBA,gl.UNSIGNED_BYTE,bitmap);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR_MIPMAP_LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.REPEAT);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.REPEAT);gl.generateMipmap(gl.TEXTURE_2D);textures.push(texture);const sourceName=json.materials.filter(m=>m.pbrMetallicRoughness?.baseColorTexture?.index===textures.length-1).map(m=>m.name).join(' ');if(/project visualisation print/.test(sourceName))retainedImages.set(sourceName,bitmap);else bitmap.close();}
@@ -81,7 +81,7 @@ presentationImages=[...retainedImages.values()];
 for(const d of draws){d.depthBias=/^Charcoal column cap/.test(d.name)?-4:/^Structural column/.test(d.name)?-2:0;const key=JSON.stringify([d.ceiling,(d.glass||d.rig||d.extras.business_screen!==undefined)?d.name:null,d.depthBias,d.color,d.emission,d.emissionMapped,d.alphaTest,d.texture?textures.indexOf(d.texture):-1,d.glass]);let g=groups.get(key);if(!g){g={...d,chunks:[],count:0};groups.set(key,g)}g.chunks.push(d.data);g.count+=d.count;for(let i=0;i<3;i++){g.min[i]=Math.min(g.min[i],d.min[i]);g.max[i]=Math.max(g.max[i],d.max[i])}}
 draws=[...groups.values()];for(const d of draws){const packed=new Float32Array(d.count*8);let offset=0;for(const chunk of d.chunks){packed.set(chunk,offset);offset+=chunk.length}delete d.chunks;delete d.data;d.vao=gl.createVertexArray();gl.bindVertexArray(d.vao);const buffer=gl.createBuffer();d.buffer=buffer;gl.bindBuffer(gl.ARRAY_BUFFER,buffer);gl.bufferData(gl.ARRAY_BUFFER,packed,d.rig?gl.DYNAMIC_DRAW:gl.STATIC_DRAW);for(const [a,size,offset] of [[0,3,0],[1,3,12],[2,2,24]]){gl.enableVertexAttribArray(a);gl.vertexAttribPointer(a,size,gl.FLOAT,false,32,offset)}}
 for(const d of draws){if(d.rig){const rig=d.rig;rig.parts=rig.parts.filter(p=>p.name!==d.name);rig.parts.push(d)}if(d.extras.business_screen!==undefined)createBusinessScreen(d)}
-ready=true;window.officeViewer={ready:true,objects:sourceParts,drawCalls:draws.length,textures:textures.length,triangles:draws.reduce((n,d)=>n+d.count/3,0),bounds:draws.reduce((b,d)=>[b[0].map((x,i)=>Math.min(x,d.min[i])),b[1].map((x,i)=>Math.max(x,d.max[i]))],[[Infinity,Infinity,Infinity],[-Infinity,-Infinity,-Infinity]])};$('#status').textContent=eyeMode?'Eye level Â· '+eyeStations[Number($('#viewpoint').value)||0].name:'Office ready Â· Drag to explore';requestAnimationFrame(render)}
+ready=true;window.officeViewer={ready:true,objects:sourceParts,drawCalls:draws.length,textures:textures.length,triangles:draws.reduce((n,d)=>n+d.count/3,0),bounds:draws.reduce((b,d)=>[b[0].map((x,i)=>Math.min(x,d.min[i])),b[1].map((x,i)=>Math.max(x,d.max[i]))],[[Infinity,Infinity,Infinity],[-Infinity,-Infinity,-Infinity]])};$('#status').textContent=eyeMode?'Eye level • '+eyeStations[Number($('#viewpoint').value)||0].name:'Office ready • Drag to explore';requestAnimationFrame(render)}
 function visible(d){return !d.ceiling||eyeMode}
 // Orthographic zoom changes framing only. Keep the eye outside the complete
 // scene and derive depth planes from all eight world-bound corners on every view.
@@ -150,8 +150,8 @@ function canStand(x,z,radius=.19){
 function moveEye(forward,side){const dx=Math.sin(walkYaw)*forward+Math.cos(walkYaw)*side,dz=-Math.cos(walkYaw)*forward+Math.sin(walkYaw)*side,steps=Math.max(1,Math.ceil(Math.hypot(dx,dz)/.055));for(let i=0;i<steps;i++){const nx=walkPosition[0]+dx/steps,nz=walkPosition[2]+dz/steps;if(canStand(nx,walkPosition[2]))walkPosition[0]=nx;if(canStand(walkPosition[0],nz))walkPosition[2]=nz}}
 function perspective(fov,aspect,near,far){const f=1/Math.tan(fov/2);return [f/aspect,0,0,0,0,f,0,0,0,0,(far+near)/(near-far),-1,0,0,2*far*near/(near-far),0]}
 function eyeProjection(width,height){const cp=Math.cos(walkPitch),target=[walkPosition[0]+Math.sin(walkYaw)*cp,walkPosition[1]+Math.sin(walkPitch),walkPosition[2]-Math.cos(walkYaw)*cp];return mul(perspective(Math.PI/3,Math.max(1,width)/Math.max(1,height),.08,150),look(walkPosition,target))}
-function selectStation(index){const station=eyeStations[index]||eyeStations[0];walkPosition=[...station.position];const d=sub(station.target,station.position);walkYaw=Math.atan2(d[0],-d[2]);walkPitch=Math.atan2(d[1],Math.hypot(d[0],d[2]));moveKeys.clear();$('#status').textContent='Eye level Â· '+station.name;invalidate()}
-function setEyeMode(enabled){eyeMode=enabled;moveKeys.clear();drag=null;document.body.classList.toggle('eye-level',enabled);$('#viewpoint').hidden=!enabled;$('#eye-level').setAttribute('aria-pressed',enabled);$('#overview').setAttribute('aria-pressed',!enabled);$('footer').textContent=enabled?'Drag to look Â· W A S D to move Â· Wheel to step forward / back':'Drag to orbit Â· Wheel to zoom Â· Right-drag / Shift-drag to pan';if(enabled)selectStation(Number($('#viewpoint').value)||0);else{$('#status').textContent='Office ready Â· Drag to explore';center=[11.5,1,-16.8];yaw=.1;pitch=1.04;distance=51}canvas.focus();invalidate()}
+function selectStation(index){const station=eyeStations[index]||eyeStations[0];walkPosition=[...station.position];const d=sub(station.target,station.position);walkYaw=Math.atan2(d[0],-d[2]);walkPitch=Math.atan2(d[1],Math.hypot(d[0],d[2]));moveKeys.clear();$('#status').textContent='Eye level • '+station.name;invalidate()}
+function setEyeMode(enabled){eyeMode=enabled;moveKeys.clear();drag=null;document.body.classList.toggle('eye-level',enabled);$('#viewpoint').hidden=!enabled;$('#eye-level').setAttribute('aria-pressed',enabled);$('#overview').setAttribute('aria-pressed',!enabled);$('footer').textContent=enabled?'Drag to look • WASD to move • Wheel to step forward / back':'Drag to orbit • Wheel to zoom • Right-drag / Shift-drag to pan';if(enabled)selectStation(Number($('#viewpoint').value)||0);else{$('#status').textContent='Office ready • Drag to explore';center=[11.5,1,-16.8];yaw=.1;pitch=1.04;distance=51}canvas.focus();invalidate()}
 canvas.oncontextmenu=e=>e.preventDefault();
 canvas.onpointerdown=e=>{canvas.focus();drag={x:e.clientX,y:e.clientY,pan:e.button===2||e.shiftKey};canvas.setPointerCapture(e.pointerId)};
 canvas.onpointermove=e=>{if(!drag)return;const dx=e.clientX-drag.x,dy=e.clientY-drag.y;if(eyeMode){walkYaw+=dx*.004;walkPitch=Math.max(-.9,Math.min(.9,walkPitch-dy*.004))}else if(drag.pan){const k=distance*.0008;center[0]-=k*(dx*Math.cos(yaw)+dy*Math.sin(yaw));center[2]+=k*(dx*Math.sin(yaw)-dy*Math.cos(yaw))}else{yaw-=dx*.006;pitch=Math.max(.60,Math.min(1.565,pitch+dy*.006))}drag.x=e.clientX;drag.y=e.clientY;invalidate()};
@@ -208,4 +208,4 @@ function updateBusinessScreens(now){
 }
 document.addEventListener('visibilitychange',()=>{if(document.hidden)clearTimeout(dynamicTimer);else invalidate()});
 
-try{setup();load().catch(fail)}catch(e){fail(e)}function fail(e){$('#error').hidden=false;$('#error').textContent=e.message+' â€” Start the local server as described in README.txt. Open http://localhost:8000/viewer/';$('#status').textContent='Viewer could not load';console.error(e)}
+try{setup();load().catch(fail)}catch(e){fail(e)}function fail(e){$('#error').hidden=false;$('#error').textContent=e.message+'  -  Start the local server as described in README.txt. Open http://localhost:8000/viewer/';$('#status').textContent='Viewer could not load';console.error(e)}
