@@ -196,7 +196,7 @@ function updateBusinessScreens(now){
  for(const screen of businessScreens){if(now-screen.last<120)continue;screen.last=now;
   const {ctx:c,surface,index}=screen,t=now/1000,slide=Math.floor(t/9+index)%3;
   c.fillStyle=['#101f2b','#1c2928','#27211c'][index];c.fillRect(0,0,960,540);
-  c.fillStyle='#d4b276';c.font='20px sans-serif';c.fillText('CAPITAL CREST  /  PROJECT GALLERY',42,43);
+  c.fillStyle='#d4b276';c.font='20px sans-serif';c.fillText('CAPITAL CREST',42,43);
   const titles=[['ARCHITECTURE IN FOCUS','A DISTINCTIVE ARRIVAL','THE PROJECT AT A GLANCE'],['MATERIALS & DETAIL','DESIGN CONVERSATIONS','CRAFTED EXPERIENCES'],['PROJECT PRESENTATION','SPACE TO COLLABORATE','EXPLORE THE DESIGN']];
   c.fillStyle='#f2eee5';c.font='bold 34px sans-serif';c.fillText(titles[index][slide],42,99);
   if(presentationImages.length){const im=presentationImages[(slide+index)%presentationImages.length];const iw=im.width,ih=im.height,w=610,h=w*ih/iw;c.save();c.beginPath();c.rect(315,132,610,335);c.clip();const zoom=1+.018*Math.sin(t*.3+index);c.translate(620,299);c.scale(zoom,zoom);c.drawImage(im,-w/2,-h/2,w,h);c.restore();}
