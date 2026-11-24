@@ -867,7 +867,7 @@ function setEyeMode(enabled) {
   $('#viewpoint').hidden = !enabled;
   $('#eye-level').setAttribute('aria-pressed', enabled);
   $('#overview').setAttribute('aria-pressed', !enabled);
-  $('footer').textContent = enabled ? 'Drag to look · W A S D or ↑↓ to walk · ←→ to turn · or use the on-screen pad' : 'Drag to orbit · Wheel to zoom · Right-drag / Shift-drag to pan';
+  $('footer').textContent = enabled ? 'Drag to look · W A S D or ↑↓ to walk · ←→ to turn' : 'Drag to orbit · Wheel to zoom · Right-drag / Shift-drag to pan';
   if (enabled) selectStation(Number($('#viewpoint').value) || 0);
   else {
     $('#status').textContent = '';
@@ -1525,39 +1525,6 @@ function renderFloorReflection(w, h, vp) {
 })();
 
 (function () {
-  const pad = document.getElementById('move-pad');
-  let turn = 0,
-    timer = null;
-  function tick() {
-    if (turn) {
-      walkYaw += turn * 0.035;
-      invalidate();
-    }
-  }
-  function down(k) {
-    if (k === 'TurnL') turn = -1;
-    else if (k === 'TurnR') turn = 1;
-    else moveKeys.add(k);
-    if (!timer) timer = setInterval(tick, 16);
-    invalidate();
-  }
-  function up(k) {
-    if (k === 'TurnL' || k === 'TurnR') turn = 0;
-    else moveKeys.delete(k);
-    if (!turn && timer) {
-      clearInterval(timer);
-      timer = null;
-    }
-  }
-  pad.querySelectorAll('button').forEach((b) => {
-    const k = b.dataset.k;
-    b.addEventListener('pointerdown', (e) => {
-      e.preventDefault();
-      b.setPointerCapture(e.pointerId);
-      down(k);
-    });
-    ['pointerup', 'pointercancel', 'lostpointercapture'].forEach((ev) => b.addEventListener(ev, () => up(k)));
-  });
   // after any UI click, give keyboard control back to the 3D view
   document.querySelectorAll('.view-switch button,.view-switch select').forEach((el) => el.addEventListener('change', () => setTimeout(() => canvas.focus(), 0)));
   document.querySelectorAll('.view-switch button').forEach((el) => el.addEventListener('click', () => setTimeout(() => canvas.focus(), 0)));
