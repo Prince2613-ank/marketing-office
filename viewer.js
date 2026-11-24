@@ -547,7 +547,7 @@ function render(now = performance.now()) {
   updateAutomaticDoors(now, dt);
   updateBusinessScreens(now);
   if (eyeMode && moveKeys.size) {
-    let forward = (moveKeys.has('KeyW') ? 1 : 0) - (moveKeys.has('KeyS') ? 1 : 0),
+    let forward = (moveKeys.has('KeyW') || moveKeys.has('ArrowUp') ? 1 : 0) - (moveKeys.has('KeyS') || moveKeys.has('ArrowDown') ? 1 : 0),
       side = (moveKeys.has('KeyD') ? 1 : 0) - (moveKeys.has('KeyA') ? 1 : 0);
     const n = Math.hypot(forward, side) || 1,
       speed = walkFast ? 2.6 : 1.5;
@@ -752,7 +752,26 @@ function captureCollision(d) {
     const points = [];
     for (let i = 0; i < d.data.length; i += 8) points.push([d.data[i], d.data[i + 2]]);
     const hull = convexHull(points);
-    if (hull.length > 2) collisionHulls.push({ hull, min: [d.min[0], d.min[2]], max: [d.max[0], d.max[2]] });
+    let area = 0;
+    for (let i = 0, j = hull.length - 1; i < hull.length; j = i++) area += (hull[j][0] + hull[i][0]) * (hull[j][1] - hull[i][1]);
+    area = Math.abs(area) / 2;
+    if (area > 1.0) {
+      for (const yc of [0.35, 0.85]) {
+        for (let i = 0; i < d.data.length; i += 24) {
+          const tri = [d.data.slice(i, i + 3), d.data.slice(i + 8, i + 11), d.data.slice(i + 16, i + 19)],
+            q = [];
+          for (let j = 0; j < 3; j++) {
+            const a = tri[j],
+              b = tri[(j + 1) % 3];
+            if ((a[1] <= yc && b[1] > yc) || (b[1] <= yc && a[1] > yc)) {
+              const t = (yc - a[1]) / (b[1] - a[1]);
+              q.push([a[0] + t * (b[0] - a[0]), a[2] + t * (b[2] - a[2])]);
+            }
+          }
+          if (q.length === 2 && Math.hypot(q[0][0] - q[1][0], q[0][1] - q[1][1]) > 0.00001) collisionSegments.push(q);
+        }
+      }
+    } else if (hull.length > 2) collisionHulls.push({ hull, min: [d.min[0], d.min[2]], max: [d.max[0], d.max[2]] });
   }
 }
 function entranceApproach(x, z) {
@@ -767,9 +786,10 @@ function entranceApproach(x, z) {
     pz = z - r.center[2];
   return Math.abs(px * ux + pz * uz) < 0.6 && Math.abs(-px * uz + pz * ux) < 1.25;
 }
-function canStand(x, z, radius = 0.19) {
+function canStand(x, z, radius = 0.16) {
   const p = [x, z];
   for (const rig of automaticDoors.values()) {
+    if (rig.amount > 0.02 || rig.target > 0) continue;
     for (const [a, b] of rig.segments) {
       const aa = doorPoint(rig, a, rig.amount),
         bb = doorPoint(rig, b, rig.amount);
@@ -784,7 +804,23 @@ function canStand(x, z, radius = 0.19) {
     [0, -radius],
   ])
     if (!pointInPolygon([x + offset[0], z + offset[1]], walkOutline) && !entranceApproach(x + offset[0], z + offset[1])) return false;
-  for (const [a, b] of collisionSegments) if (segmentDistance(p, a, b) < radius) return false;
+  if (!window.__segGrid) {
+    const G = new Map();
+    for (const s of collisionSegments) {
+      const x0 = Math.floor(Math.min(s[0][0], s[1][0]) - 0.3),
+        x1 = Math.floor(Math.max(s[0][0], s[1][0]) + 0.3),
+        z0 = Math.floor(Math.min(s[0][1], s[1][1]) - 0.3),
+        z1 = Math.floor(Math.max(s[0][1], s[1][1]) + 0.3);
+      for (let gx = x0; gx <= x1; gx++)
+        for (let gz = z0; gz <= z1; gz++) {
+          const k = gx + ',' + gz;
+          if (!G.has(k)) G.set(k, []);
+          G.get(k).push(s);
+        }
+    }
+    window.__segGrid = G;
+  }
+  for (const [a, b] of window.__segGrid.get(Math.floor(x) + ',' + Math.floor(z)) || []) if (segmentDistance(p, a, b) < radius) return false;
   for (const { hull, min, max } of collisionHulls) {
     if (x < min[0] - radius || x > max[0] + radius || z < min[1] - radius || z > max[1] + radius) continue;
     if (pointInPolygon(p, hull)) return false;
@@ -793,14 +829,15 @@ function canStand(x, z, radius = 0.19) {
   return true;
 }
 function moveEye(forward, side) {
+  const stuck = !canStand(walkPosition[0], walkPosition[2]);
   const dx = Math.sin(walkYaw) * forward + Math.cos(walkYaw) * side,
     dz = -Math.cos(walkYaw) * forward + Math.sin(walkYaw) * side,
     steps = Math.max(1, Math.ceil(Math.hypot(dx, dz) / 0.055));
   for (let i = 0; i < steps; i++) {
     const nx = walkPosition[0] + dx / steps,
       nz = walkPosition[2] + dz / steps;
-    if (canStand(nx, walkPosition[2])) walkPosition[0] = nx;
-    if (canStand(walkPosition[0], nz)) walkPosition[2] = nz;
+    if (stuck || canStand(nx, walkPosition[2])) walkPosition[0] = nx;
+    if (stuck || canStand(walkPosition[0], nz)) walkPosition[2] = nz;
   }
 }
 function perspective(fov, aspect, near, far) {
@@ -830,7 +867,7 @@ function setEyeMode(enabled) {
   $('#viewpoint').hidden = !enabled;
   $('#eye-level').setAttribute('aria-pressed', enabled);
   $('#overview').setAttribute('aria-pressed', !enabled);
-  $('footer').textContent = enabled ? 'Drag to look · W A S D to move · Wheel to step forward / back' : 'Drag to orbit · Wheel to zoom · Right-drag / Shift-drag to pan';
+  $('footer').textContent = enabled ? 'Drag to look · W A S D or ↑↓ to walk · ←→ to turn · or use the on-screen pad' : 'Drag to orbit · Wheel to zoom · Right-drag / Shift-drag to pan';
   if (enabled) selectStation(Number($('#viewpoint').value) || 0);
   else {
     $('#status').textContent = '';
@@ -881,7 +918,7 @@ canvas.onwheel = (e) => {
 };
 canvas.tabIndex = 0;
 canvas.setAttribute('aria-label', 'Office 3D view');
-canvas.onkeydown = (e) => {
+const keyHandler = (e) => {
   if (e.ctrlKey || e.metaKey || e.altKey) return;
   if (e.key.toLowerCase() === 'e') {
     if (e.repeat) return;
@@ -895,8 +932,9 @@ canvas.onkeydown = (e) => {
     return;
   }
   if (eyeMode) {
-    if (['KeyW', 'KeyA', 'KeyS', 'KeyD'].includes(e.code)) {
-      if (!moveKeys.has(e.code)) moveEye(e.code === 'KeyW' ? 0.07 : e.code === 'KeyS' ? -0.07 : 0, e.code === 'KeyD' ? 0.07 : e.code === 'KeyA' ? -0.07 : 0);
+    if (['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown'].includes(e.code)) {
+      if (!moveKeys.has(e.code))
+        moveEye(e.code === 'KeyW' || e.code === 'ArrowUp' ? 0.07 : e.code === 'KeyS' || e.code === 'ArrowDown' ? -0.07 : 0, e.code === 'KeyD' ? 0.07 : e.code === 'KeyA' ? -0.07 : 0);
       moveKeys.add(e.code);
       e.preventDefault();
       invalidate();
@@ -923,6 +961,13 @@ canvas.onkeydown = (e) => {
   e.preventDefault();
   invalidate();
 };
+canvas.onkeydown = keyHandler;
+window.addEventListener('keydown', (e) => {
+  if (e.target === canvas) return;
+  const t = (e.target && e.target.tagName) || '';
+  if (t === 'INPUT' || t === 'TEXTAREA' || (t === 'SELECT' && e.key.startsWith('Arrow'))) return;
+  keyHandler(e);
+});
 window.addEventListener('keyup', (e) => {
   moveKeys.delete(e.code);
   if (e.code.startsWith('Shift')) walkFast = false;
@@ -951,7 +996,7 @@ $('#viewpoint').onchange = () => {
 {
   const q = new URLSearchParams(location.search),
     requested = q.get('spot'),
-    index = { reception: 0, model: 1, lounge: 2, meeting: 3, doors: 4, workstations: 5, storage: 6, lounge2: 7, model2: 8, bar: 9, reception2: 10, meeting2: 11, toilet: 12 }[requested] ?? 7;
+    index = { reception: 0, model: 1, lounge: 2, meeting: 3, doors: 4, workstations: 5, storage: 6, lounge2: 2, model2: 1, bar: 9, reception2: 0, meeting2: 3, toilet: 12 }[requested] ?? 2;
   $('#viewpoint').value = String(index);
   if (q.get('view') === 'eye' || requested) setEyeMode(true);
 }
@@ -967,9 +1012,14 @@ function doorPoint(r, p, amount) {
 }
 function updateAutomaticDoors(now, dt) {
   for (const r of automaticDoors.values()) {
-    const near = eyeMode && Math.hypot(walkPosition[0] - r.center[0], walkPosition[2] - r.center[2]) < 1.65;
+    const ddx = r.center[0] - walkPosition[0],
+      ddz = r.center[2] - walkPosition[2],
+      dist = Math.hypot(ddx, ddz),
+      wc = /WC$/.test(r.id),
+      facing = (Math.sin(walkYaw) * ddx - Math.cos(walkYaw) * ddz) / Math.max(dist, 0.001);
+    const near = eyeMode && (wc ? (walkPosition[0] > 21.05 && dist < 2.2) || (dist < 1.1 && Math.abs(ddz) < 0.55 && Math.sin(walkYaw) > 0.55) : dist < 1.65);
     if (near) r.lastNear = now;
-    r.target = eyeMode && (near || now - r.lastNear < 1800) ? 1 : 0;
+    r.target = eyeMode && (near || now - r.lastNear < (wc ? 450 : 1800)) ? 1 : 0;
     const next = Math.max(0, Math.min(1, r.amount + Math.sign(r.target - r.amount) * Math.min(Math.abs(r.target - r.amount), dt * 1.8)));
     if (Math.abs(next - r.amount) < 0.00001) continue;
     r.amount = next;
@@ -1472,4 +1522,63 @@ function renderFloorReflection(w, h, vp) {
     }, 500);
   }
   init();
+})();
+
+(function () {
+  const pad = document.getElementById('move-pad');
+  let turn = 0,
+    timer = null;
+  function tick() {
+    if (turn) {
+      walkYaw += turn * 0.035;
+      invalidate();
+    }
+  }
+  function down(k) {
+    if (k === 'TurnL') turn = -1;
+    else if (k === 'TurnR') turn = 1;
+    else moveKeys.add(k);
+    if (!timer) timer = setInterval(tick, 16);
+    invalidate();
+  }
+  function up(k) {
+    if (k === 'TurnL' || k === 'TurnR') turn = 0;
+    else moveKeys.delete(k);
+    if (!turn && timer) {
+      clearInterval(timer);
+      timer = null;
+    }
+  }
+  pad.querySelectorAll('button').forEach((b) => {
+    const k = b.dataset.k;
+    b.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      b.setPointerCapture(e.pointerId);
+      down(k);
+    });
+    ['pointerup', 'pointercancel', 'lostpointercapture'].forEach((ev) => b.addEventListener(ev, () => up(k)));
+  });
+  // after any UI click, give keyboard control back to the 3D view
+  document.querySelectorAll('.view-switch button,.view-switch select').forEach((el) => el.addEventListener('change', () => setTimeout(() => canvas.focus(), 0)));
+  document.querySelectorAll('.view-switch button').forEach((el) => el.addEventListener('click', () => setTimeout(() => canvas.focus(), 0)));
+})();
+
+// Merge PDF viewpoints into their matching stations.
+(function () {
+  const S = eyeStations,
+    map = { 0: 10, 1: 8, 2: 7, 3: 11 };
+  for (const [to, from] of Object.entries(map)) {
+    S[to].position = [...S[from].position];
+    S[to].target = [...S[from].target];
+  }
+  S[9].name = 'Coffee bar';
+  const sel = document.getElementById('viewpoint');
+  for (const o of [...sel.options]) {
+    if (['7', '8', '10', '11'].includes(o.value)) o.remove();
+    if (o.value === '9') o.textContent = 'Coffee bar';
+  }
+  if (!['0', '1', '2', '3', '4', '5', '6', '9', '12'].includes(sel.value)) {
+    sel.value = '2';
+  }
+  if (eyeMode) selectStation(Number(sel.value));
 })();
