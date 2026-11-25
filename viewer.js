@@ -1,5 +1,5 @@
 'use strict';
-// Dependency-free GLB 2 renderer for this Blender export. Loads marketing_office.glb and tv_video.mp4 from this folder.
+// Dependency-free GLB 2 renderer for this Blender export. Loads marketing_office.glb, people.bin and tv_video.mp4 from this folder.
 const canvas = document.querySelector('#view'),
   gl = canvas.getContext('webgl2', { antialias: true, alpha: false });
 const $ = (s) => document.querySelector(s);
@@ -132,7 +132,7 @@ function setup() {
     shader(
       gl.VERTEX_SHADER,
       `#version 300 es
- layout(location=0) in vec3 position;layout(location=1) in vec3 normal;layout(location=2) in vec2 uv;uniform mat4 vp;out vec3 P;out vec3 N;out vec2 UV;void main(){P=position;N=normal;UV=uv;gl_Position=vp*vec4(position,1.);}`,
+ layout(location=0) in vec3 position;layout(location=1) in vec3 normal;layout(location=2) in vec2 uv;layout(location=3) in vec4 joints;layout(location=4) in vec4 weights;uniform mat4 vp;uniform mat4 model;uniform int skinMode;uniform highp sampler2D boneTex;uniform int boneRow;out vec3 P;out vec3 N;out vec2 UV;mat4 bone(float j){int x=int(j+.5)*3;vec4 a=texelFetch(boneTex,ivec2(x,boneRow),0),b=texelFetch(boneTex,ivec2(x+1,boneRow),0),c=texelFetch(boneTex,ivec2(x+2,boneRow),0);return mat4(a.x,b.x,c.x,0.,a.y,b.y,c.y,0.,a.z,b.z,c.z,0.,a.w,b.w,c.w,1.);}void main(){vec4 p=vec4(position,1.);vec3 n=normal;if(skinMode==1){mat4 s=bone(joints.x)*weights.x+bone(joints.y)*weights.y+bone(joints.z)*weights.z+bone(joints.w)*weights.w;p=s*p;n=mat3(s)*n;}p=model*p;n=mat3(model)*n;P=p.xyz;N=n;UV=uv;gl_Position=vp*p;}`,
     ),
   );
   gl.attachShader(
@@ -140,7 +140,7 @@ function setup() {
     shader(
       gl.FRAGMENT_SHADER,
       `#version 300 es
- precision highp float;in vec3 P;in vec3 N;in vec2 UV;uniform vec4 color;uniform float cutoff;uniform float alphaTest;uniform bool highlight;uniform bool textured;uniform sampler2D baseMap;uniform sampler2D shadowMap;uniform mat4 shadowMatrix;uniform vec3 emission;uniform bool emissionMapped;uniform bool interior;uniform bool night;uniform bool clearGlass;uniform bool liveTV;uniform bool fixtureLight;uniform bool displayScreen;uniform bool floorSurface;uniform sampler2D reflectionMap;uniform vec2 viewportSize;uniform float roughness;uniform float metallic;uniform vec3 viewEye;out vec4 outColor;
+ precision highp float;in vec3 P;in vec3 N;in vec2 UV;uniform vec4 blobs[16];uniform vec4 color;uniform float cutoff;uniform float alphaTest;uniform bool highlight;uniform bool textured;uniform sampler2D baseMap;uniform sampler2D shadowMap;uniform mat4 shadowMatrix;uniform vec3 emission;uniform bool emissionMapped;uniform bool interior;uniform bool night;uniform bool clearGlass;uniform bool liveTV;uniform bool fixtureLight;uniform bool displayScreen;uniform bool floorSurface;uniform sampler2D reflectionMap;uniform vec2 viewportSize;uniform float roughness;uniform float metallic;uniform vec3 viewEye;out vec4 outColor;
  // Fixed light-space taps stay stable while the camera moves.
  float shadowAmount(vec3 n){
    vec4 q=shadowMatrix*vec4(P+n*.07,1.);vec3 c=q.xyz/q.w*.5+.5;
@@ -163,6 +163,7 @@ function setup() {
  vec3 grazing=f0+(1.-f0)*pow(1.-nv,5.);
  vec3 reflection=environment*grazing*(1.-r*.72)*(night?.34:.48);
  float hemisphere=mix(.80,1.,clamp(n.y*.5+.5,0.,1.));
+ float blobAO=1.;for(int i=0;i<16;i++){vec4 b=blobs[i];if(b.w<=0.)continue;vec2 dd=P.xz-b.xy;blobAO*=1.-b.w*exp(-dot(dd,dd)/(b.z*b.z));}light*=mix(1.,blobAO,1.-smoothstep(.015,.09,P.y));
  vec3 c=albedo*light*hemisphere*(1.-metallic*.72)+spec+reflection+emission*(night?1.25:(displayScreen?.42:(fixtureLight?1.15:0.)))*(emissionMapped?texel.rgb:vec3(1.));if(clearGlass)c=mix(vec3(.58,.67,.69),environment,.28)+grazing*.12;if(floorSurface&&n.y>.7){vec2 uv=gl_FragCoord.xy/viewportSize;vec2 d=vec2(1.5)/viewportSize;vec3 reflectedColor=(texture(reflectionMap,uv+d).rgb+texture(reflectionMap,uv-d).rgb+texture(reflectionMap,uv+vec2(d.x,-d.y)).rgb+texture(reflectionMap,uv+vec2(-d.x,d.y)).rgb)*.25;vec3 reflectedLinear=-log(max(vec3(.001),vec3(1.)-pow(reflectedColor,vec3(2.2))))/(night?1.5:1.38);c=mix(c,reflectedLinear,.30+.34*pow(1.-nv,5.));}if(highlight)c=mix(c,vec3(.3,1.,.82),.5);c=vec3(1.)-exp(-c*(night?1.5:1.38));float opacity=color.a*texel.a;if(clearGlass)opacity*=1.+.8*pow(1.-nv,4.);outColor=vec4(pow(c,vec3(1./2.2)),opacity);}`,
     ),
   );
@@ -193,10 +194,18 @@ function setup() {
     'floorSurface',
     'reflectionMap',
     'viewportSize',
+    'model',
+    'skinMode',
+    'boneTex',
+    'boneRow',
+    'blobs',
   ])
     U[n] = gl.getUniformLocation(program, n);
   gl.uniform1i(U.baseMap, 0);
   gl.uniform1i(U.shadowMap, 1);
+  gl.uniformMatrix4fv(U.model, false, new Float32Array(I()));
+  gl.uniform1i(U.skinMode, 0);
+  gl.uniform1i(U.boneTex, 4);
   whiteTexture = gl.createTexture();
   gl.bindTexture(gl.TEXTURE_2D, whiteTexture);
   gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([255, 255, 255, 255]));
@@ -245,7 +254,7 @@ async function load() {
   if (!response.ok) throw Error('GLB failed to load: ' + response.status);
   let buf;
   const headerLen = response.headers.get('content-length');
-  const expectedTotal = headerLen ? parseInt(headerLen, 10) : 60302524;
+  const expectedTotal = headerLen ? parseInt(headerLen, 10) : 57611152;
   if (response.body) {
     let loaded = 0;
     const reader = response.body.getReader();
@@ -313,14 +322,28 @@ async function load() {
     let a = json.accessors[id],
       v = json.bufferViews[a.bufferView],
       n = { SCALAR: 1, VEC2: 2, VEC3: 3, VEC4: 4 }[a.type],
-      bytes = { 5121: 1, 5123: 2, 5125: 4, 5126: 4 }[a.componentType],
+      bytes = { 5120: 1, 5121: 1, 5122: 2, 5123: 2, 5125: 4, 5126: 4 }[a.componentType],
       stride = v.byteStride || n * bytes,
       start = (v.byteOffset || 0) + (a.byteOffset || 0),
       out = [];
     for (let i = 0; i < a.count; i++)
       for (let j = 0; j < n; j++) {
         let off = start + i * stride + j * bytes;
-        out.push(a.componentType === 5126 ? bin.getFloat32(off, true) : a.componentType === 5125 ? bin.getUint32(off, true) : a.componentType === 5123 ? bin.getUint16(off, true) : bin.getUint8(off));
+        let val =
+          a.componentType === 5126
+            ? bin.getFloat32(off, true)
+            : a.componentType === 5125
+              ? bin.getUint32(off, true)
+              : a.componentType === 5123
+                ? bin.getUint16(off, true)
+                : a.componentType === 5122
+                  ? bin.getInt16(off, true)
+                  : a.componentType === 5120
+                    ? bin.getInt8(off)
+                    : bin.getUint8(off);
+        if (a.q) val = a.q[j] + ((val + 32767) / 65534) * (a.q[n + j] - a.q[j]);
+        else if (a.nq) val /= 127;
+        out.push(val);
       }
     return out;
   }
@@ -393,6 +416,7 @@ async function load() {
     for (let ch of n.children || []) visit(ch, world);
   }
   for (let n of json.scenes[json.scene || 0].nodes) visit(n, I());
+  if (window.PEOPLE) draws = PEOPLE.prepare(draws);
   const sourceParts = draws.length,
     groups = new Map();
   for (const d of draws) {
@@ -476,6 +500,7 @@ async function load() {
     }
     if (d.extras.business_screen !== undefined) createBusinessScreen(d);
   }
+  if (window.PEOPLE) await PEOPLE.init();
   ready = true;
   window.officeViewer = {
     ready: true,
@@ -542,6 +567,7 @@ function invalidate() {
 }
 function render(now = performance.now()) {
   framePending = false;
+  if (window.PEOPLE && PEOPLE.ready && PEOPLE.playing && !document.hidden) invalidate();
   const dt = Math.min(0.05, (now - lastWalkTime) / 1000 || 0.016);
   lastWalkTime = now;
   updateAutomaticDoors(now, dt);
@@ -572,7 +598,7 @@ function render(now = performance.now()) {
     gl.useProgram(shadowProgram);
     gl.uniformMatrix4fv(shadowU.vp, false, new Float32Array(shadowVP));
     for (let d of draws) {
-      if (d.glass || (d.nightOnly && !nightMode)) continue;
+      if (d.glass || d.name === 'Reception concierge' || (d.nightOnly && !nightMode)) continue;
       gl.bindVertexArray(d.vao);
       gl.uniform1f(shadowU.cutoff, cutoff(d));
       gl.drawArrays(gl.TRIANGLES, 0, d.count);
@@ -609,6 +635,7 @@ function render(now = performance.now()) {
   gl.uniformMatrix4fv(U.shadowMatrix, false, new Float32Array(shadowVP));
   gl.activeTexture(gl.TEXTURE1);
   gl.bindTexture(gl.TEXTURE_2D, shadowTexture);
+  if (window.PEOPLE) PEOPLE.update(now);
   const ordered = draws
     .filter((d) => !d.glass)
     .concat(
@@ -628,6 +655,10 @@ function render(now = performance.now()) {
     );
   for (let transparent of [false, true]) {
     gl.depthMask(!transparent);
+    if (transparent && window.PEOPLE) {
+      PEOPLE.draw();
+      gl.depthMask(false);
+    }
     for (let d of ordered) {
       if (d.glass !== transparent || !visible(d)) continue;
       gl.bindVertexArray(d.vao);
@@ -673,7 +704,7 @@ const moveKeys = new Set(),
   collisionSegments = [],
   collisionHulls = [];
 const eyeStations = [
-  { name: 'Reception', position: [8.6, 1.6, -9.2], target: [4.6, 1.65, -14.7] },
+  { name: 'Reception', position: [7.38, 1.59, -7.07], target: [12.1, 1.86, -6.84] },
   { name: 'Project model', position: [8.8, 1.6, -12], target: [11.34, 1.45, -13.4783] },
   { name: 'Lounge', position: [8.35, 1.6, -13.1], target: [3.8, 1.8, -16.8] },
   { name: 'Meeting', position: [13.15, 1.6, -4.95], target: [18.2, 1.1, -6.6] },
@@ -683,7 +714,7 @@ const eyeStations = [
   { name: 'PDF · Multimedia lounge', position: [8.9, 1.72, -13.85], target: [1.2, 1.45, -13.85] },
   { name: 'PDF · Scale model', position: [7.6, 2.6, -9.6], target: [11.3, 0.5, -13.3] },
   { name: 'PDF · Coffee bar', position: [13.2, 1.6, -13.65], target: [19.4, 1.5, -13.65] },
-  { name: 'PDF · Reception', position: [6.9, 1.6, -10.2], target: [11.3, 1.2, -6.9] },
+  { name: 'PDF · Reception', position: [7.65, 1.59, -7.75], target: [12.1, 1.79, -6.83] },
   { name: 'PDF · Meeting room', position: [12.62, 1.55, -7.45], target: [19.4, 1.2, -5.7] },
   { name: 'Toilet', position: [21.35, 1.6, -11.6], target: [22.9, 1.15, -10.3] },
 ];
@@ -867,7 +898,7 @@ function setEyeMode(enabled) {
   $('#viewpoint').hidden = !enabled;
   $('#eye-level').setAttribute('aria-pressed', enabled);
   $('#overview').setAttribute('aria-pressed', !enabled);
-  $('footer').textContent = enabled ? 'Drag to look · W A S D or ↑↓ to walk · ←→ to turn' : 'Drag to orbit · Wheel to zoom · Right-drag / Shift-drag to pan';
+  $('footer').textContent = enabled ? 'Drag to look · W A S D or ↑↓ to walk · ←→ to turn · Wheel to step' : 'Drag to orbit · Wheel to zoom · Right-drag / Shift-drag to pan';
   if (enabled) selectStation(Number($('#viewpoint').value) || 0);
   else {
     $('#status').textContent = '';
@@ -996,9 +1027,10 @@ $('#viewpoint').onchange = () => {
 {
   const q = new URLSearchParams(location.search),
     requested = q.get('spot'),
-    index = { reception: 0, model: 1, lounge: 2, meeting: 3, doors: 4, workstations: 5, storage: 6, lounge2: 2, model2: 1, bar: 9, reception2: 0, meeting2: 3, toilet: 12 }[requested] ?? 2;
+    index =
+      { reception: 0, model: 1, lounge: 2, meeting: 3, doors: 4, workstations: 5, storage: 6, lounge2: 2, model2: 1, bar: 9, reception2: 0, meeting2: 3, toilet: 12 }[requested] ?? (q.size ? 2 : 0);
   $('#viewpoint').value = String(index);
-  if (q.get('view') === 'eye' || requested) setEyeMode(true);
+  if (!q.size || q.get('view') === 'eye' || requested) setEyeMode(true);
 }
 
 // Door sensors use distance to the opening, from either side, with a hold-open zone.
@@ -1214,6 +1246,422 @@ function renderFloorReflection(w, h, vp) {
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   gl.viewport(0, 0, w, h);
 }
+
+// Animated visitors: GPU-skinned RenderPeople figures + coffee-cup props, baked choreography.
+window.PEOPLE = (function () {
+  'use strict';
+  const HIDE = new Set(['Lounge / north guest', 'Lounge / east guest', 'Lounge / south guest left', 'Lounge / south guest right', 'Coffee bar / service attendant']);
+  const CUP_NODE = 'Coffee V4 patterned cappuccino cups with latte art';
+  const SAUCER0 = [17.25, 1.054, -12.6],
+    CUP0 = [17.25, 1.065, -12.6],
+    LATTE0 = [17.25, 1.121, -12.6];
+  const P = { playing: true, actors: [], props: { saucer: [], cup: [], latte: [] }, ready: false, t: 0, last: null, speed: 1, blobs: new Float32Array(64) };
+  let H,
+    bin,
+    boneTex,
+    boneData,
+    maxBones = 0,
+    stream = null;
+  function prepare(draws) {
+    const out = [];
+    for (const d of draws) {
+      if (HIDE.has(d.name)) continue;
+      if (d.name === CUP_NODE) {
+        const keep = [],
+          sau = [],
+          cup = [];
+        let latte = true,
+          any = false;
+        for (let i = 0; i < d.data.length; i += 24) {
+          const cx = (d.data[i] + d.data[i + 8] + d.data[i + 16]) / 3,
+            cy = (d.data[i + 1] + d.data[i + 9] + d.data[i + 17]) / 3,
+            cz = (d.data[i + 2] + d.data[i + 10] + d.data[i + 18]) / 3;
+          if (cx > 17.1 && cx < 17.4 && cz > -12.78 && cz < -12.42) {
+            any = true;
+            const tri = d.data.slice(i, i + 24);
+            if (Math.abs(cy - 1.121) > 0.003) latte = false;
+            (cy < 1.0655 ? sau : cup).push(tri);
+          } else for (let k = 0; k < 24; k++) keep.push(d.data[i + k]);
+        }
+        if (any) {
+          const mk = (list, o) => {
+            const a = new Float32Array(list.length * 24);
+            list.forEach((t, j) => {
+              for (let v = 0; v < 3; v++) {
+                const b = j * 24 + v * 8;
+                for (let k = 0; k < 8; k++) a[b + k] = t[v * 8 + k];
+                a[b] -= o[0];
+                a[b + 1] -= o[1];
+                a[b + 2] -= o[2];
+              }
+            });
+            return a;
+          };
+          const mat = { color: d.color, roughness: d.roughness, metallic: d.metallic, texture: d.texture, emission: d.emission };
+          if (latte && cup.length) P.props.latte.push({ ...mat, data: mk(cup, LATTE0) });
+          else {
+            if (sau.length) P.props.saucer.push({ ...mat, data: mk(sau, SAUCER0) });
+            if (cup.length) P.props.cup.push({ ...mat, data: mk(cup, CUP0) });
+          }
+          d.data = keep;
+          d.count = keep.length / 8;
+          if (!d.count) continue;
+        }
+      }
+      if (d.name === 'Coffee V4 espresso machine and grinder' && (d.texture || (d.color[0] > 0.85 && d.color[1] > 0.85) || (d.metallic > 0.8 && d.color[2] < 0.4 && d.color[0] > 0.7))) {
+        const keep = [];
+        for (let i = 0; i < d.data.length; i += 24) {
+          const cx = (d.data[i] + d.data[i + 8] + d.data[i + 16]) / 3,
+            cy = (d.data[i + 1] + d.data[i + 9] + d.data[i + 17]) / 3,
+            cz = (d.data[i + 2] + d.data[i + 10] + d.data[i + 18]) / 3;
+          if (cx > 18.66 && cx < 18.86 && cz > -13.22 && cz < -13.02 && cy < 1.06) continue;
+          for (let k = 0; k < 24; k++) keep.push(d.data[i + k]);
+        }
+        d.data = keep;
+        d.count = keep.length / 8;
+        if (!d.count) continue;
+      }
+      out.push(d);
+    }
+    return out;
+  }
+  function view(o, type) {
+    return new type(bin.buffer, bin.byteOffset + H.off + o[0], o[1] / type.BYTES_PER_ELEMENT);
+  }
+  function staticVAO(data) {
+    const vao = gl.createVertexArray();
+    gl.bindVertexArray(vao);
+    const b = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, b);
+    gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
+    for (const [a, size, offset] of [
+      [0, 3, 0],
+      [1, 3, 12],
+      [2, 2, 24],
+    ]) {
+      gl.enableVertexAttribArray(a);
+      gl.vertexAttribPointer(a, size, gl.FLOAT, false, 32, offset);
+    }
+    gl.bindVertexArray(null);
+    return vao;
+  }
+  async function init() {
+    try {
+      const st = document.getElementById('status');
+      if (st) st.textContent = 'Loading visitors...';
+      const res = await fetch('people.bin');
+      if (!res.ok) throw Error('people.bin failed to load: ' + res.status);
+      let bytes = new Uint8Array(await res.arrayBuffer());
+      if (bytes[0] === 0x1f && bytes[1] === 0x8b) bytes = new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'))).arrayBuffer());
+      const dv = new DataView(bytes.buffer);
+      const hl = dv.getUint32(4, true);
+      H = JSON.parse(new TextDecoder().decode(bytes.subarray(8, 8 + hl)));
+      H.off = 8 + hl;
+      bin = bytes;
+      for (const A of H.actors) {
+        const vao = gl.createVertexArray();
+        gl.bindVertexArray(vao);
+        const attr = (loc, arr, size, type, normalized) => {
+          const b = gl.createBuffer();
+          gl.bindBuffer(gl.ARRAY_BUFFER, b);
+          gl.bufferData(gl.ARRAY_BUFFER, arr, gl.STATIC_DRAW);
+          gl.enableVertexAttribArray(loc);
+          gl.vertexAttribPointer(loc, size, type, normalized, 0, 0);
+        };
+        attr(0, view(A.pos, Float32Array), 3, gl.FLOAT, false);
+        attr(1, view(A.nrm, Int8Array), 3, gl.BYTE, true);
+        attr(2, view(A.uv, Float32Array), 2, gl.FLOAT, false);
+        attr(3, view(A.j, Uint8Array), 4, gl.UNSIGNED_BYTE, false);
+        attr(4, view(A.w, Uint8Array), 4, gl.UNSIGNED_BYTE, true);
+        const ib = gl.createBuffer();
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ib);
+        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, A.u32 ? view(A.idx, Uint32Array) : view(A.idx, Uint16Array), gl.STATIC_DRAW);
+        gl.bindVertexArray(null);
+        const bmp = await createImageBitmap(new Blob([view(A.tex, Uint8Array)], { type: 'image/jpeg' }));
+        const tex = gl.createTexture();
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, tex);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.SRGB8_ALPHA8, gl.RGBA, gl.UNSIGNED_BYTE, bmp);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.generateMipmap(gl.TEXTURE_2D);
+        bmp.close();
+        P.actors.push({
+          A,
+          vao,
+          tex,
+          count: A.nt * 3,
+          u32: A.u32,
+          par: view(A.par, Int16Array),
+          rest: view(A.rest, Float32Array),
+          inv: view(A.inv, Float32Array),
+          hip: view(A.hip, Float32Array),
+          q: view(A.q, Int16Array),
+          world: new Float32Array(A.nb * 12),
+        });
+        maxBones = Math.max(maxBones, A.nb);
+      }
+      boneData = new Float32Array(maxBones * 3 * 4 * P.actors.length);
+      boneTex = gl.createTexture();
+      gl.activeTexture(gl.TEXTURE4);
+      gl.bindTexture(gl.TEXTURE_2D, boneTex);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, maxBones * 3, P.actors.length, 0, gl.RGBA, gl.FLOAT, null);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+      gl.activeTexture(gl.TEXTURE0);
+      for (const k of ['saucer', 'cup', 'latte'])
+        for (const p of P.props[k]) {
+          p.vao = staticVAO(p.data);
+          p.count = p.data.length / 8;
+        }
+      P.sau = view(H.props.saucer, Float32Array);
+      P.cupM = view(H.props.cup, Float32Array);
+      P.level = view(H.props.level, Float32Array);
+      P.stream = view(H.props.stream, Uint8Array);
+      // coffee stream: thin cylinder from y=0 down to y=-1
+      const seg = 10,
+        r = 0.0032,
+        cyl = [];
+      for (let i = 0; i < seg; i++) {
+        const a0 = (i / seg) * Math.PI * 2,
+          a1 = ((i + 1) / seg) * Math.PI * 2;
+        const v = (a, y) => [Math.cos(a) * r, y, Math.sin(a) * r, Math.cos(a), 0, Math.sin(a), 0, 0];
+        cyl.push(...v(a0, 0), ...v(a1, 0), ...v(a1, -1), ...v(a0, 0), ...v(a1, -1), ...v(a0, -1));
+      }
+      stream = { vao: staticVAO(new Float32Array(cyl)), count: cyl.length / 8 };
+      gl.useProgram(program);
+      gl.uniform1i(U.boneTex, 4);
+      gl.uniformMatrix4fv(U.model, false, new Float32Array(I()));
+      gl.uniform1i(U.skinMode, 0);
+      P.ready = true;
+      P.start = performance.now();
+      const btn = document.getElementById('people-toggle');
+      if (btn) {
+        btn.hidden = false;
+        btn.onclick = () => {
+          P.playing = !P.playing;
+          btn.textContent = P.playing ? 'Pause people' : 'Play people';
+          btn.setAttribute('aria-pressed', P.playing);
+          P.last = null;
+          invalidate();
+        };
+      }
+    } catch (e) {
+      console.warn('People animation unavailable', e);
+    }
+  }
+  function qmat(x, y, z, w) {
+    return [
+      1 - 2 * (y * y + z * z),
+      2 * (x * y - z * w),
+      2 * (x * z + y * w),
+      2 * (x * y + z * w),
+      1 - 2 * (x * x + z * z),
+      2 * (y * z - x * w),
+      2 * (x * z - y * w),
+      2 * (y * z + x * w),
+      1 - 2 * (x * x + y * y),
+    ];
+  }
+  function m34mul(a, ao, b, bo, o, oo) {
+    // 3x4 row-major
+    for (let r = 0; r < 3; r++) {
+      const a0 = a[ao + r * 4],
+        a1 = a[ao + r * 4 + 1],
+        a2 = a[ao + r * 4 + 2],
+        a3 = a[ao + r * 4 + 3];
+      o[oo + r * 4] = a0 * b[bo] + a1 * b[bo + 4] + a2 * b[bo + 8];
+      o[oo + r * 4 + 1] = a0 * b[bo + 1] + a1 * b[bo + 5] + a2 * b[bo + 9];
+      o[oo + r * 4 + 2] = a0 * b[bo + 2] + a1 * b[bo + 6] + a2 * b[bo + 10];
+      o[oo + r * 4 + 3] = a0 * b[bo + 3] + a1 * b[bo + 7] + a2 * b[bo + 11] + a3;
+    }
+  }
+  const tmp = new Float32Array(12),
+    rq = new Float32Array(12);
+  function quatAt(arr, base, stride, f0, f1, w, scale) {
+    // nlerp int16 or float quats
+    let x0 = arr[f0 * stride + base],
+      y0 = arr[f0 * stride + base + 1],
+      z0 = arr[f0 * stride + base + 2],
+      w0 = arr[f0 * stride + base + 3];
+    let x1 = arr[f1 * stride + base],
+      y1 = arr[f1 * stride + base + 1],
+      z1 = arr[f1 * stride + base + 2],
+      w1 = arr[f1 * stride + base + 3];
+    if (x0 * x1 + y0 * y1 + z0 * z1 + w0 * w1 < 0) {
+      x1 = -x1;
+      y1 = -y1;
+      z1 = -z1;
+      w1 = -w1;
+    }
+    let x = x0 + (x1 - x0) * w,
+      y = y0 + (y1 - y0) * w,
+      z = z0 + (z1 - z0) * w,
+      q = w0 + (w1 - w0) * w;
+    const n = Math.hypot(x, y, z, q) || 1;
+    return [x / n, y / n, z / n, q / n];
+  }
+  function update(now) {
+    if (!P.ready) return;
+    if (P.playing) {
+      if (P.last !== null) P.t = (P.t + Math.min(0.1, (now - P.last) / 1000) * P.speed) % H.L;
+      P.last = now;
+    }
+    const f = P.t * H.fps,
+      N = H.frames,
+      f0 = Math.floor(f) % N,
+      f1 = (f0 + 1) % N,
+      w = f - Math.floor(f);
+    P.f0 = f0;
+    P.f1 = f1;
+    P.w = w;
+    let nb = 0;
+    P.blobs.fill(0);
+    P.actors.forEach((ac, row) => {
+      const A = ac.A,
+        n = A.nb,
+        W = ac.world,
+        base = row * maxBones * 12;
+      for (let i = 0; i < n; i++) {
+        const q = quatAt(ac.q, i * 4, n * 4, f0, f1, w),
+          R = qmat(...q);
+        rq[0] = R[0];
+        rq[1] = R[1];
+        rq[2] = R[2];
+        rq[3] = 0;
+        rq[4] = R[3];
+        rq[5] = R[4];
+        rq[6] = R[5];
+        rq[7] = 0;
+        rq[8] = R[6];
+        rq[9] = R[7];
+        rq[10] = R[8];
+        rq[11] = 0;
+        const p = ac.par[i];
+        if (p < 0) {
+          for (let k = 0; k < 12; k++) W[k] = rq[k];
+          W[3] = ac.hip[f0 * 3] + (ac.hip[f1 * 3] - ac.hip[f0 * 3]) * w;
+          W[7] = ac.hip[f0 * 3 + 1] + (ac.hip[f1 * 3 + 1] - ac.hip[f0 * 3 + 1]) * w;
+          W[11] = ac.hip[f0 * 3 + 2] + (ac.hip[f1 * 3 + 2] - ac.hip[f0 * 3 + 2]) * w;
+        } else {
+          m34mul(W, p * 12, ac.rest, i * 12, tmp, 0);
+          m34mul(tmp, 0, rq, 0, W, i * 12);
+        }
+        m34mul(W, i * 12, ac.inv, i * 12, boneData, base + i * 12);
+      }
+      // contact shadows
+      for (const fi of [A.feet[0], A.feet[1]]) {
+        const x = W[fi * 12 + 3],
+          y = W[fi * 12 + 7],
+          z = W[fi * 12 + 11];
+        if (nb < 16) {
+          P.blobs.set([x, z, 0.13, 0.42 * Math.max(0, 1 - (y - 0.06) / 0.35)], nb * 4);
+          nb++;
+        }
+      }
+      const hy = W[7];
+      if (hy > 0.7 && nb < 16) {
+        P.blobs.set([W[3], W[11], 0.32, 0.2], nb * 4);
+        nb++;
+      }
+    });
+    gl.activeTexture(gl.TEXTURE4);
+    gl.bindTexture(gl.TEXTURE_2D, boneTex);
+    gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, maxBones * 3, P.actors.length, gl.RGBA, gl.FLOAT, boneData);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.uniform4fv(U.blobs, P.blobs);
+  }
+  function rigid(arr, f0, f1, w) {
+    const a = f0 * 7,
+      b = f1 * 7,
+      p = [0, 1, 2].map((k) => arr[a + k] + (arr[b + k] - arr[a + k]) * w);
+    const q = quatAt(arr, 3, 7, f0, f1, w),
+      R = qmat(...q);
+    return [R[0], R[3], R[6], 0, R[1], R[4], R[7], 0, R[2], R[5], R[8], 0, p[0], p[1], p[2], 1];
+  }
+  function setMat(d) {
+    gl.uniform1i(U.floorSurface, false);
+    gl.uniform1f(U.roughness, d.roughness);
+    gl.uniform1f(U.metallic, d.metallic);
+    gl.uniform1i(U.clearGlass, false);
+    gl.uniform4fv(U.color, d.color);
+    gl.uniform3fv(U.emission, d.emission || [0, 0, 0]);
+    gl.uniform1i(U.emissionMapped, false);
+    gl.uniform1i(U.liveTV, false);
+    gl.uniform1i(U.displayScreen, false);
+    gl.uniform1i(U.fixtureLight, false);
+    gl.uniform1f(U.cutoff, 99);
+    gl.uniform1f(U.alphaTest, 0);
+    gl.uniform1i(U.highlight, false);
+    gl.uniform1i(U.textured, !!d.texture);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, d.texture || whiteTexture);
+  }
+  function draw() {
+    if (!P.ready) return;
+    gl.depthMask(true);
+    gl.disable(gl.POLYGON_OFFSET_FILL);
+    gl.uniform1i(U.skinMode, 1);
+    gl.uniformMatrix4fv(U.model, false, new Float32Array(I()));
+    P.actors.forEach((ac, row) => {
+      setMat({ roughness: 0.78, metallic: 0, color: [1, 1, 1, 1], texture: ac.tex });
+      gl.uniform1i(U.boneRow, row);
+      gl.bindVertexArray(ac.vao);
+      gl.drawElements(gl.TRIANGLES, ac.count, ac.u32 ? gl.UNSIGNED_INT : gl.UNSIGNED_SHORT, 0);
+    });
+    gl.uniform1i(U.skinMode, 0);
+    const { f0, f1, w } = P,
+      S = rigid(P.sau, f0, f1, w),
+      C = rigid(P.cupM, f0, f1, w);
+    for (const d of P.props.saucer) {
+      setMat(d);
+      gl.uniformMatrix4fv(U.model, false, new Float32Array(S));
+      gl.bindVertexArray(d.vao);
+      gl.drawArrays(gl.TRIANGLES, 0, d.count);
+    }
+    for (const d of P.props.cup) {
+      setMat(d);
+      gl.uniformMatrix4fv(U.model, false, new Float32Array(C));
+      gl.bindVertexArray(d.vao);
+      gl.drawArrays(gl.TRIANGLES, 0, d.count);
+    }
+    const lv = P.level[f0] + (P.level[f1] - P.level[f0]) * w;
+    if (lv > 0.013 && P.level[f0] > 0.013) {
+      // keep the coffee surface level; shrink it with the taper of the cup
+      const s = (0.028 + ((0.041 - 0.028) * (lv - 0.008)) / 0.048) / 0.041,
+        cx = C[12] + C[4] * lv,
+        cy = C[13] + C[5] * lv,
+        cz = C[14] + C[6] * lv,
+        yaw = Math.atan2(C[8], C[10]),
+        c = Math.cos(yaw) * s,
+        sn = Math.sin(yaw) * s;
+      const M = [c, 0, -sn, 0, 0, 1, 0, 0, sn, 0, c, 0, cx, cy, cz, 1];
+      for (const d of P.props.latte) {
+        setMat(d);
+        gl.uniformMatrix4fv(U.model, false, new Float32Array(M));
+        gl.bindVertexArray(d.vao);
+        gl.drawArrays(gl.TRIANGLES, 0, d.count);
+      }
+    }
+    if (P.stream[f0] && stream) {
+      const top = H.spout,
+        bottom = C[13] + C[5] * Math.max(lv, 0.012),
+        len = Math.max(0.01, top[1] - bottom),
+        wob = 1 + 0.15 * Math.sin(performance.now() / 40);
+      setMat({ roughness: 0.3, metallic: 0, color: [0.22, 0.12, 0.05, 1] });
+      gl.uniformMatrix4fv(U.model, false, new Float32Array([wob, 0, 0, 0, 0, len, 0, 0, 0, 0, wob, 0, top[0], top[1], top[2], 1]));
+      gl.bindVertexArray(stream.vao);
+      gl.drawArrays(gl.TRIANGLES, 0, stream.count);
+    }
+    gl.uniformMatrix4fv(U.model, false, new Float32Array(I()));
+    gl.bindVertexArray(null);
+  }
+  P.prepare = prepare;
+  P.init = init;
+  P.update = update;
+  P.draw = draw;
+  return P;
+})();
 
 // Live employee monitors: one animated canvas atlas, a different app on every screen.
 (function () {
@@ -1524,12 +1972,6 @@ function renderFloorReflection(w, h, vp) {
   init();
 })();
 
-(function () {
-  // after any UI click, give keyboard control back to the 3D view
-  document.querySelectorAll('.view-switch button,.view-switch select').forEach((el) => el.addEventListener('change', () => setTimeout(() => canvas.focus(), 0)));
-  document.querySelectorAll('.view-switch button').forEach((el) => el.addEventListener('click', () => setTimeout(() => canvas.focus(), 0)));
-})();
-
 // Merge PDF viewpoints into their matching stations.
 (function () {
   const S = eyeStations,
@@ -1549,3 +1991,71 @@ function renderFloorReflection(w, h, vp) {
   }
   if (eyeMode) selectStation(Number(sel.value));
 })();
+
+// Viewpoint pop-up menu (replaces the native select).
+(function () {
+  const sel = document.getElementById('viewpoint');
+  if (!sel) return;
+  const wrap = document.createElement('span');
+  wrap.className = 'vp-wrap';
+  const tog = document.createElement('button');
+  tog.id = 'viewpoint-toggle';
+  tog.type = 'button';
+  tog.setAttribute('aria-haspopup', 'true');
+  tog.setAttribute('aria-expanded', 'false');
+  const menu = document.createElement('div');
+  menu.className = 'vp-menu';
+  menu.hidden = true;
+  menu.setAttribute('role', 'menu');
+  sel.parentNode.insertBefore(wrap, sel);
+  wrap.append(tog, menu, sel);
+  const label = () => {
+    const o = sel.options[sel.selectedIndex];
+    tog.textContent = o ? o.textContent : 'Viewpoint';
+  };
+  function build() {
+    menu.innerHTML = '';
+    for (const o of sel.options) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = o.textContent;
+      b.setAttribute('role', 'menuitem');
+      b.setAttribute('aria-current', o.value === sel.value);
+      b.onclick = (e) => {
+        e.stopPropagation();
+        sel.value = o.value;
+        sel.dispatchEvent(new Event('change', { bubbles: true }));
+        label();
+        close();
+      };
+      menu.append(b);
+    }
+  }
+  function close() {
+    menu.hidden = true;
+    tog.setAttribute('aria-expanded', 'false');
+  }
+  tog.onclick = (e) => {
+    e.stopPropagation();
+    if (menu.hidden) {
+      build();
+      menu.hidden = false;
+      tog.setAttribute('aria-expanded', 'true');
+    } else close();
+  };
+  document.addEventListener('pointerdown', (e) => {
+    if (!wrap.contains(e.target)) close();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') close();
+  });
+  sel.addEventListener('change', label);
+  setInterval(label, 400);
+  label();
+})();
+
+// After any UI click, give keyboard control back to the 3D view.
+document.querySelectorAll('.view-switch button,.view-switch select').forEach((el) => {
+  el.addEventListener('change', () => setTimeout(() => canvas.focus(), 0));
+  el.addEventListener('click', () => setTimeout(() => canvas.focus(), 0));
+});
